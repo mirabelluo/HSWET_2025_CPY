@@ -1,0 +1,40 @@
+// Include the Wire library for I2C communication
+#include <Wire.h>
+// Include the Adafruit INA260 library
+#include <Adafruit_INA260.h>
+// Create an instance of the INA260 sensor
+Adafruit_INA260 ina260;
+void setup() {
+  // Initialize serial communication at a baud rate of 115200 for the ESP32
+  Serial.begin(115200);
+  // Wait for the Serial Monitor to initialize
+  while (!Serial) {
+    delay(10); // Small delay to wait for serial to initialize
+  }
+  // Initialize I2C communication with custom pins (SDA=3, SCL=10)
+  Wire.begin(8, 10); // SDA on GPIO 3, SCL on GPIO 10
+  // Initialize the INA260 sensor
+  if (!ina260.begin()) {
+    Serial.println("Couldn't find INA260 chip");
+    while (1); // Infinite loop if the sensor isn't detected
+  }
+  // Print a message indicating successful initialization
+  Serial.println("INA260 sensor initialized.");
+}
+void loop() {
+  // Read current from the INA260 sensor in milliamps
+  float current_mA = ina260.readCurrent();
+  // Read bus voltage from the INA260 sensor in millivolts
+  float voltage_mV = ina260.readBusVoltage();
+  // Read power from the INA260 sensor in milliwatts
+  float power_mW = ina260.readPower();
+  // Print the current, voltage, and power readings to the Serial Monitor
+  Serial.print("Current (mA): ");
+  Serial.print(current_mA);          // Display current
+  Serial.print("\tVoltage (mV): ");
+  Serial.print(voltage_mV);          // Display voltage
+  Serial.print("\tPower (mW): ");
+  Serial.println(power_mW);          // Display power and move to a new line
+  // Wait 1 second before taking the next set of readings
+  delay(1000);
+}

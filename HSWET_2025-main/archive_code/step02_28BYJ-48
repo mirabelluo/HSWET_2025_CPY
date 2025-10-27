@@ -1,0 +1,31 @@
+// Don't use: motor too weak
+// Updated 11/03/2024
+#include <Stepper.h>
+
+// Defines the number of steps per rotation
+const int stepsPerRevolution = 2038;
+
+// Creates an instance of stepper class
+// Pins entered in sequence IN1-IN3-IN2-IN4 for proper step sequence
+Stepper myStepper = Stepper(stepsPerRevolution, 8, 10, 9, 11);
+
+void setup() {
+    // Set motor speed at startup
+    myStepper.setSpeed(1); // Start with very low speed (1 RPM)
+}
+
+void loop() {
+    // Take smaller steps to reduce vibration
+    for(int i = 0; i < stepsPerRevolution; i += 4) {
+        myStepper.step(4);  // Take 4 steps at a time
+        delay(2); // Small delay between steps
+    }
+    delay(1000);
+    
+    // Reverse direction
+    for(int i = 0; i < stepsPerRevolution; i += 4) {
+        myStepper.step(-4); // Take 4 steps at a time
+        delay(2); // Small delay between steps
+    }
+    delay(1000);
+}

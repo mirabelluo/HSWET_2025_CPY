@@ -1,0 +1,72 @@
+// Author: Kareem Taher, John Oak
+// Uploaded 12/15/2024, not tested yet
+
+const int analogPin = A0;        // Reads incoming voltage
+const float maxVoltage = 48.0;  // Max incoming voltage
+const int resistorPins[8] = {2, 3, 4, 5, 6, 7, 8, 9}; // Gate enabler digital pins
+const float resistances[8] = {15, 15.3, 3.3, 0.8, 2.3, 0.8, 3.0, 1.0}; // Resistance values for each path
+const float maxCurrent = 0.3;   // Current limit
+void setup() {
+  Serial.begin(9600);
+  for (int i = 0; i < 8; i++) { // Initialize all gates to OFF
+    pinMode(resistorPins[i], OUTPUT);
+    digitalWrite(resistorPins[i], LOW);
+  }
+}
+void loop() {
+  // Step 1: Read voltage from the analog pin
+  int analogValue = analogRead(analogPin); // Incoming voltage analog value
+  float voltage = (analogValue / 982.0) * maxVoltage; // Incoming voltage real value
+  Serial.print("AnalogRead: ");
+  Serial.println(analogValue);
+  // Step 2: Determine the best combination of paths
+  int bestCombination = 0;
+  float lowestResistance = 1000; // Start with a high resistance
+  for (int i = 1; i < 256; i++) { // 2^8 = 256 combinations (1 to 255)
+    float equivalentResistance = calculateParallelResistance(i); // Calculate Req
+    float current = voltage / equivalentResistance; // Current for this combination
+    // Check if this combination is valid and better
+    if (current <= maxCurrent && equivalentResistance < lowestResistance) {
+      lowestResistance = equivalentResistance; // Update lowest resistance
+      bestCombination = i;                     // Store best combination
+    }
+  }
+  // Step 3: Apply the best combination (turn ON/OFF resistors)
+  int tempbest = bestCombination;
+  for (int i = 0; i < 8; i++) {
+    int rembest = tempbest % 2;  // Extract least significant bit (LSB)
+    tempbest = tempbest / 2;     // Shift right
+    if (rembest == 1) {
+      digitalWrite(resistorPins[i], HIGH); // Enable this resistor
+    } else {
+      digitalWrite(resistorPins[i], LOW);  // Disable this resistor
+    }
+  }
+  // Step 4: Print the results
+  Serial.print("Voltage: ");
+  Serial.print(voltage);
+  Serial.print(" V, ");
+  Serial.print("Equivalent Resistance: ");
+  Serial.print(lowestResistance);
+  Serial.print(" Ohms, ");
+  Serial.print("Current: ");
+  Serial.print(voltage / lowestResistance);
+  Serial.println(" A");
+  delay(1000);
+}
+// Req Function: Calculate equivalent resistance for a given combination
+float calculateParallelResistance(int combination) {
+  float reciprocalSum = 0.0;
+  int temp1 = combination;
+  for (int i = 0; i < 8; i++) {
+    int rem = temp1 % 2;  // Extract least significant bit (LSB)
+    temp1 = temp1 / 2;    // Shift right
+    if (rem == 1) {       // If this resistor is part of the combination
+      reciprocalSum += 1.0 / resistances[i];
+    }
+  }
+  if (reciprocalSum == 0.0) { // No resistors selected, avoid division by 0
+    return 1000; // Return a very high resistance value (like an open circuit)
+  }
+  return 1.0 / reciprocalSum;
+}

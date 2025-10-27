@@ -1,0 +1,178 @@
+/*
+Inclinometer + 4-direction indicator LEDs
+MPU-6050 + MPU6050 Library + Arduino IDE 
+SCL pin is at the top right
+SDA pin is at the top 2nd right
+Using these status indicators to rotate the NEMA17 Motor
+
+*/
+
+#include "Wire.h" // This library allows you to communicate with I2C devices.
+
+const int MPU_ADDR = 0x68; // I2C address of the MPU-6050. If AD0 pin is set to HIGH, the I2C address will be 0x69.
+
+int16_t accelerometer_x, accelerometer_y, accelerometer_z; // variables for accelerometer raw data
+int16_t gyro_x, gyro_y, gyro_z; // variables for gyro raw data
+int16_t temperature; // variables for temperature data
+
+#define LED_LF 13
+#define LED_RF 12
+#define LED_LB 11
+#define LED_RB 10
+
+// Calibration offsets (initially zero)
+int16_t ax_offset = 0;
+int16_t ay_offset = 0;
+int16_t az_offset = 0;
+
+// Calibration duration (5 seconds)
+const int calibration_duration = 5000;
+unsigned long start_time;
+
+// Variables to store the sum of accelerometer readings for averaging
+long sum_ax = 0;
+long sum_ay = 0;
+long sum_az = 0;
+int num_samples = 0;
+
+char tmp_str[7]; // temporary variable used in convert function
+
+char* convert_int16_to_str(int16_t i) { // converts int16 to string. Moreover, resulting strings will have the same length in the debug monitor.
+  sprintf(tmp_str, "%6d", i);
+  return tmp_str;
+}
+
+void setup() {
+  Serial.begin(9600);
+
+  // Set up the LEDs
+  pinMode(LED_LF, OUTPUT);
+  pinMode(LED_RF, OUTPUT);
+  pinMode(LED_LB, OUTPUT);
+  pinMode(LED_RB, OUTPUT);
+  digitalWrite(LED_LF, LOW);
+  digitalWrite(LED_RF, LOW);
+  digitalWrite(LED_LB, LOW);
+  digitalWrite(LED_RB, LOW);
+
+  Wire.begin();
+  Wire.beginTransmission(MPU_ADDR); // Begins a transmission to the I2C slave (GY-521 board)
+  Wire.write(0x6B); // PWR_MGMT_1 register
+  Wire.write(0); // set to zero (wakes up the MPU-6050)
+  Wire.endTransmission(true);
+
+  start_time = millis(); // Record start time for calibration
+}
+
+void loop() {
+  // Read accelerometer and gyro data from MPU-6050
+  Wire.beginTransmission(MPU_ADDR);
+  Wire.write(0x3B); // starting with register 0x3B (ACCEL_XOUT_H) [MPU-6000 and MPU-6050 Register Map and Descriptions Revision 4.2, p.40]
+  Wire.endTransmission(false); // the parameter indicates that the Arduino will send a restart. As a result, the connection is kept active.
+  Wire.requestFrom(MPU_ADDR, 7*2, true); // request a total of 7*2=14 registers
+  
+  // Read accelerometer and gyro data
+  accelerometer_x = (Wire.read()<<8 | Wire.read());
+  accelerometer_y = (Wire.read()<<8 | Wire.read());
+  accelerometer_z = (Wire.read()<<8 | Wire.read());
+  temperature = Wire.read()<<8 | Wire.read(); 
+  gyro_x = Wire.read()<<8 | Wire.read(); 
+  gyro_y = Wire.read()<<8 | Wire.read(); 
+  gyro_z = Wire.read()<<8 | Wire.read();
+
+  // During the first 5 seconds, collect data for calibration
+  if (millis() - start_time <= calibration_duration) {
+    sum_ax += accelerometer_x;
+    sum_ay += accelerometer_y;
+    sum_az += accelerometer_z;
+    num_samples++;
+    
+    // Flash all LEDs every 0.5 seconds during calibration
+    if ((millis() - start_time) % 500 < 200) {
+      digitalWrite(LED_LF, HIGH);
+      digitalWrite(LED_RF, HIGH);
+      digitalWrite(LED_LB, HIGH);
+      digitalWrite(LED_RB, HIGH);
+    } else {
+      digitalWrite(LED_LF, LOW);
+      digitalWrite(LED_RF, LOW);
+      digitalWrite(LED_LB, LOW);
+      digitalWrite(LED_RB, LOW);
+    }
+    
+    // Print message to indicate calibration in progress
+    Serial.println("Calibrating...");
+  }
+  // After 5 seconds, calculate offsets and adjust readings
+  else if (num_samples > 0 && ax_offset == 0 && ay_offset == 0 && az_offset == 0) {
+    // Compute average values to use as offsets
+    ax_offset = sum_ax / num_samples;
+    ay_offset = sum_ay / num_samples;
+    az_offset = sum_az / num_samples;
+    
+    // Print the calculated offsets
+    Serial.println("Calibration complete!");
+    Serial.print("ax_offset: "); Serial.println(ax_offset);
+    Serial.print("ay_offset: "); Serial.println(ay_offset);
+    Serial.print("az_offset: "); Serial.println(az_offset);
+  }
+  
+  // Apply the calculated offsets
+  accelerometer_x -= ax_offset;
+  accelerometer_y -= ay_offset;
+  accelerometer_z -= az_offset;
+  
+  // Print out data after calibration
+  Serial.print("aX = "); Serial.print(convert_int16_to_str(accelerometer_x));
+  Serial.print(" | aY = "); Serial.print(convert_int16_to_str(accelerometer_y));
+  Serial.print(" | aZ = "); Serial.print(convert_int16_to_str(accelerometer_z));
+  Serial.print(" | tmp = "); Serial.print(temperature/340.00 + 36.53);
+  Serial.print(" | gX = "); Serial.print(convert_int16_to_str(gyro_x));
+  Serial.print(" | gY = "); Serial.print(convert_int16_to_str(gyro_y));
+  Serial.print(" | gZ = "); Serial.print(convert_int16_to_str(gyro_z));
+  Serial.println();
+
+  // LED control logic
+  // Front tilt
+  if (accelerometer_z < -50 && accelerometer_y < -1000) {
+    digitalWrite(LED_LF, HIGH);
+    digitalWrite(LED_RF, HIGH);
+    digitalWrite(LED_LB, LOW);
+    digitalWrite(LED_RB, LOW);
+  } 
+
+  // Left tilt
+  else if (accelerometer_x > 1000 && accelerometer_y < 1100) {
+    digitalWrite(LED_LF, HIGH);
+    digitalWrite(LED_RF, LOW);
+    digitalWrite(LED_LB, HIGH);
+    digitalWrite(LED_RB, LOW);
+  } 
+  
+  // Right tilt
+  else if (accelerometer_x < -1500 && accelerometer_z < -150) {
+    digitalWrite(LED_LF, LOW);
+    digitalWrite(LED_RF, HIGH);
+    digitalWrite(LED_LB, LOW);
+    digitalWrite(LED_RB, HIGH);
+  } 
+
+  // Back tilt
+  else if (accelerometer_z < 200 && accelerometer_y > 600) {
+    digitalWrite(LED_LF, LOW);
+    digitalWrite(LED_RF, LOW);
+    digitalWrite(LED_LB, HIGH);
+    digitalWrite(LED_RB, HIGH);
+  } 
+
+  // No significant tilt
+  else {
+    digitalWrite(LED_LF, LOW);
+    digitalWrite(LED_RF, LOW);
+    digitalWrite(LED_LB, LOW);
+    digitalWrite(LED_RB, LOW);
+  } 
+
+  // delay
+  delay(500);
+}
